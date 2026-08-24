@@ -116,7 +116,7 @@ function borrarItem(col,id,fecha){const m=ym(fecha);
    IMPORTACIÓN DEL EXCEL  (todo local; sube solo el resumen del día)
    ============================================================= */
 const CAMPOS=[
- {k:'fecha',n:'Fecha de atención',req:1,rx:/^fec|fch|^d[ií]a|ingreso$|^fecha/i},
+ {k:'fecha',n:'Fecha de atención',req:1,rx:/^ingreso$|^fec|fch|^d[ií]a|^fecha/i},
  {k:'hora',n:'Hora de ingreso',rx:/^horai$|hora.?ingr|ingr.?hora|hora.?admis|hora.?entrada/i},
  {k:'horaA',n:'Hora de atención médica',rx:/^hora$|hora.?at|hora.?med|hora.?consul|hora.?inicio/i},
  {k:'hc',n:'Historia clínica',rx:/hist|\bhc\b|clinic/i},
@@ -124,12 +124,12 @@ const CAMPOS=[
  {k:'edadA',n:'Edad en años',rx:/edad.*a[nñ]|a[nñ]os/i},
  {k:'edadM',n:'Edad en meses',rx:/edad.*mes|meses/i},
  {k:'fnac',n:'Fecha de nacimiento',rx:/nacim|f\.?nac/i},
- {k:'sexo',n:'Sexo',rx:/sexo|g[eé]nero/i},
- {k:'triage',n:'Nivel de triage',rx:/triage|triaje|categor|prioridad|nivel|color|gravedad/i},
- {k:'dx',n:'Diagnóstico o motivo',rx:/diag.*egr|diagn|\bdx\b|patolog|cie/i},
+ {k:'sexo',n:'Sexo',rx:/^sexo|g[eé]nero/i},
+ {k:'triage',n:'Nivel de triage',rx:/triage|triaje|categor|prioridad|^nivel|color|gravedad/i},
+ {k:'dx',n:'Diagnóstico o motivo',rx:/^diag.?egr|diag.*egr|^diagegre|diagn|\bdx\b|patolog|cie/i},
  {k:'destino',n:'Destino o egreso',rx:/^destino|^egreso|conducta|^resultado|derivac/i},
- {k:'internCol',n:'Columna que marca internación',rx:/motivo.*intern|intern/i},
- {k:'prof',n:'Profesional que atendió',rx:/medico|m[eé]dic|profesion|efector|agente/i}
+ {k:'internCol',n:'Columna que marca internación',rx:/motivo.?intern|^motivoi$|intern/i},
+ {k:'prof',n:'Profesional que atendió',rx:/^medico$|m[eé]dic|profesion|efector|agente/i}
 ];
 const MESES={ene:1,jan:1,feb:2,mar:3,abr:4,apr:4,may:5,jun:6,jul:7,ago:8,aug:8,sep:9,set:9,oct:10,nov:11,dic:12,dec:12};
 let IMP=null;
@@ -722,7 +722,12 @@ async function leer(f){
       IMP={headers,rows,name:f.name};
       $('fileInfo').innerHTML=`<b style="color:var(--ink)">${esc(f.name)}</b> · ${rows.length} filas`;
       $('st1').classList.add('done');
-      if(!S.cfg.map||!Object.keys(S.cfg.map).length)S.cfg.map=autoMap(headers);
+      // Si no hay mapeo guardado, o el guardado apunta a columnas que este archivo no tiene
+      // (el sistema exporta con nombres distintos según el día), lo recalculo automáticamente.
+      const m=S.cfg.map;
+      const sirve=m&&Object.keys(m).length&&Object.values(m).every(i=>i<headers.length);
+      const fechaOk=sirve&&m.fecha!=null&&/ingreso|fec|fch|d[ií]a|fecha/i.test(headers[m.fecha]||'');
+      if(!fechaOk)S.cfg.map=autoMap(headers);
       pintarMap();
     }catch(err){console.error(err);toast('No se pudo leer el archivo',1)}};
   if(csv)fr.readAsText(f,'utf-8');else fr.readAsArrayBuffer(f);
