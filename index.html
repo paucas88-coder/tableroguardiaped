@@ -80,8 +80,10 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(19,50,56,.
 .alert.ok .pill{background:var(--t4)}
 .alert .txt{font-size:13.5px}.alert .why{display:block;color:var(--mut);font-size:12px;margin-top:1px}
 .brow{display:grid;grid-template-columns:minmax(88px,1fr) 1.6fr 46px;gap:9px;align-items:center;margin-bottom:6px;font-size:13px}
-.brow .bar{height:9px;background:var(--line2);border-radius:5px;overflow:hidden}
-.brow .bar i{display:block;height:100%;border-radius:5px}
+.brow .bar{height:16px;background:var(--line2);border-radius:5px;overflow:hidden;position:relative}
+.brow .bar i{display:block;height:100%;border-radius:5px;min-width:2px}
+.brow .bar em{position:absolute;top:0;left:7px;height:16px;line-height:16px;font-family:var(--mono);
+ font-size:10.5px;font-style:normal;color:var(--ink);opacity:.85;pointer-events:none}
 .brow .n{font-family:var(--mono);text-align:right;font-size:12.5px}
 .hourbars{display:flex;align-items:flex-end;gap:2px;height:88px;margin-top:4px}
 .hourbars i{flex:1;background:var(--t5);border-radius:2px 2px 0 0;min-height:2px}

@@ -49,7 +49,7 @@ const CFG_DEF={nombre:'Guardia Pediátrica',hosp:'',esquema:3,med:2,enf:3,camas:
    ============================================================= */
 let S={cfg:{...CFG_DEF},equipos:[],stock:[],carros:[{id:'c1',n:'Carro de paro · Guardia'}]};
 let B={dias:{},partes:{},checks:{},eventos:{}};   // baldes por mes: {'2026-08':[...]}
-let range=7, vista='panel', sub=null, editP=null, editE=null;
+let range=7, vista='panel', sub=null, editP=null, editE=null, editK=null;
 
 const $=i=>document.getElementById(i);
 const N=v=>{const n=parseFloat(v);return isNaN(n)?0:n};
@@ -335,7 +335,10 @@ function aggEv(d,consultas){
 const kpi=(k,v,u,f,s)=>`<div class="kpi ${s||''}"><div class="k">${k}</div>
   <div class="v">${v}${u?`<small> ${u}</small>`:''}</div>${f?`<div class="f">${f}</div>`:''}</div>`;
 const bars=(it,tot,cf)=>it.map(x=>{const p=tot>0?x.v/tot*100:0;
-  return `<div class="brow"><span>${esc(x.n)}</span><span class="bar"><i style="width:${p.toFixed(1)}%;background:${cf(x)}"></i></span>
+  const tip=tot>0?`${esc(x.n)}: ${x.v} · ${f1(p)} %`:`${esc(x.n)}: ${x.v}`;
+  const etq=tot>0&&p>=8?`<em>${f1(p)} %</em>`:'';
+  return `<div class="brow" title="${tip}"><span>${esc(x.n)}</span>
+  <span class="bar"><i style="width:${p.toFixed(1)}%;background:${cf(x)}"></i>${etq}</span>
   <span class="n">${x.v}</span></div>`}).join('');
 const est=(v,meta,mayor)=>(v==null||isNaN(v))?'':(mayor?(v>=meta?'hi':v>=meta*.9?'warn':'bad'):(v<=meta?'hi':v<=meta*1.25?'warn':'bad'));
 
@@ -454,7 +457,7 @@ function vCargar(){
   if(sub==='carro')box.innerHTML=volver+formCarro();
   if(sub==='evento')box.innerHTML=volver+formEvento();
   if(sub==='hist')box.innerHTML=volver+historial();
-  $('volver').onclick=()=>{sub=null;editP=null;editE=null;vCargar()};
+  $('volver').onclick=()=>{sub=null;editP=null;editE=null;editK=null;vCargar()};
   if(sub==='parte')bindParte();if(sub==='carro')bindCarro();
   if(sub==='evento')bindEvento();if(sub==='hist')bindHist();
 }
@@ -519,34 +522,35 @@ function bindParte(){
     guardarItem('partes',p);editP=null;sub=null;vCargar();vPanel();toast('Parte guardado')};
 }
 function formCarro(){
-  const hoy=iso(new Date());
+  const k=editK||{},hoy=iso(new Date());
+  const chk=(id,val,def)=>editK?(k[val]?'checked':''):(def?'checked':'');
   return `<form id="fCarro">
-   <fieldset><legend>Control</legend><div class="grid g2">
-     <div class="field"><label>Carro</label><select id="k_carro">${S.carros.map(c=>`<option value="${c.id}">${esc(c.n)}</option>`).join('')}</select></div>
-     <div class="field"><label>Fecha</label><input type="date" id="k_fecha" value="${hoy}" required></div>
-     <div class="field"><label>Turno</label><select id="k_turno">${turnos().map(t=>`<option value="${t.k}">${t.n}</option>`).join('')}</select></div>
-     <div class="field"><label>Controló</label><input type="text" id="k_quien" style="font-family:var(--body)"></div>
+   <fieldset><legend>${editK?'Editar control':'Control'}</legend><div class="grid g2">
+     <div class="field"><label>Carro</label><select id="k_carro">${S.carros.map(c=>`<option value="${c.id}" ${k.carro===c.id?'selected':''}>${esc(c.n)}</option>`).join('')}</select></div>
+     <div class="field"><label>Fecha</label><input type="date" id="k_fecha" value="${k.fecha||hoy}" required></div>
+     <div class="field"><label>Turno</label><select id="k_turno">${turnos().map(t=>`<option value="${t.k}" ${k.turno===t.k?'selected':''}>${t.n}</option>`).join('')}</select></div>
+     <div class="field"><label>Controló</label><input type="text" id="k_quien" value="${esc(k.quien||'')}" style="font-family:var(--body)"></div>
    </div></fieldset>
    <fieldset><legend>Verificación</legend>
-     ${[['k_precinto','Precinto íntegro y numerado',1],['k_desf','Desfibrilador testeado, batería y parches pediátricos',1],
-        ['k_via','Set de vía aérea pediátrica completo',1],['k_med','Medicación crítica completa y vigente',1],
-        ['k_o2','Oxígeno, aspiración y ambú operativos',1],['k_usado','El carro se usó desde el último control',0]]
-       .map(([id,tx,on])=>`<label class="check ${on?'on':''}"><input type="checkbox" id="${id}" ${on?'checked':''}><span>${tx}</span></label>`).join('')}
+     ${[['k_precinto','precinto','Precinto íntegro y numerado',1],['k_desf','desf','Desfibrilador testeado, batería y parches pediátricos',1],
+        ['k_via','via','Set de vía aérea pediátrica completo',1],['k_med','med','Medicación crítica completa y vigente',1],
+        ['k_o2','o2','Oxígeno, aspiración y ambú operativos',1],['k_usado','usado','El carro se usó desde el último control',0]]
+       .map(([id,val,tx,on])=>`<label class="check ${(editK?k[val]:on)?'on':''}"><input type="checkbox" id="${id}" ${chk(id,val,on)}><span>${tx}</span></label>`).join('')}
      <div class="grid g2" style="margin-top:6px">
-       <div class="field"><label>Ítems por vencer (30 días)</label><input type="number" inputmode="numeric" id="k_venc" value="0"></div>
-       <div class="field"><label>Horas hasta reposición</label><input type="number" inputmode="numeric" id="k_rep"></div></div>
-     <div class="field"><label>Detalle del hallazgo</label><textarea id="k_hall"></textarea></div></fieldset>
-   <button type="submit" class="btn wide">Guardar control</button></form>`;
+       <div class="field"><label>Ítems por vencer (30 días)</label><input type="number" inputmode="numeric" id="k_venc" value="${k.venc??0}"></div>
+       <div class="field"><label>Horas hasta reposición</label><input type="number" inputmode="numeric" id="k_rep" value="${k.rep??''}"></div></div>
+     <div class="field"><label>Detalle del hallazgo</label><textarea id="k_hall">${esc(k.hall||'')}</textarea></div></fieldset>
+   <button type="submit" class="btn wide">${editK?'Guardar cambios':'Guardar control'}</button></form>`;
 }
 function bindCarro(){
   document.querySelectorAll('#fCarro .check input').forEach(i=>i.onchange=()=>
     i.closest('.check').classList.toggle('on',i.checked));
   $('fCarro').onsubmit=e=>{e.preventDefault();
-    guardarItem('checks',{id:'k'+Date.now(),carro:$('k_carro').value,fecha:$('k_fecha').value,turno:$('k_turno').value,
+    guardarItem('checks',{id:(editK&&editK.id)||'k'+Date.now(),carro:$('k_carro').value,fecha:$('k_fecha').value,turno:$('k_turno').value,
       quien:$('k_quien').value.trim(),precinto:$('k_precinto').checked,desf:$('k_desf').checked,via:$('k_via').checked,
       med:$('k_med').checked,o2:$('k_o2').checked,usado:$('k_usado').checked,venc:N($('k_venc').value),
       rep:$('k_rep').value,hall:$('k_hall').value.trim()});
-    sub=null;vCargar();vPanel();toast('Control registrado')};
+    editK=null;sub=null;vCargar();vPanel();toast('Control guardado')};
 }
 function formEvento(){
   const e=editE||{},hoy=iso(new Date());
@@ -584,20 +588,23 @@ function historial(){
     <th>Fecha</th><th>Turno</th><th>Enf.</th><th>Prácticas</th><th></th></tr></thead><tbody>
     ${P.map(p=>`<tr><td class="num">${esd(p.fecha)}</td><td><span class="chip ${p.turno}">${p.turno}</span></td>
       <td class="num">${p.enfP||0}/${p.enfPl||0}</td><td class="num">${ENF.reduce((a,e)=>a+N(p.e?.[e.k]),0)}</td>
-      <td><button class="btn gh sm" data-pe="${p.id}" data-pf="${p.fecha}">Editar</button></td></tr>`).join('')}
+      <td><button class="btn gh sm" data-pe="${p.id}" data-pf="${p.fecha}">Editar</button>
+          <button class="btn dg sm" data-px="${p.id}" data-pf2="${p.fecha}">×</button></td></tr>`).join('')}
     </tbody></table>`:'<p class="hint">Sin partes cargados.</p>'}</div></div>
    <div class="card"><h2>Controles del carro</h2><div class="tblwrap">${K.length?`<table><thead><tr>
      <th>Fecha</th><th>Turno</th><th>Precinto</th><th>Desfib.</th><th>Por vencer</th><th></th></tr></thead><tbody>
      ${K.map(k=>`<tr><td class="num">${esd(k.fecha)}</td><td><span class="chip ${k.turno}">${k.turno}</span></td>
        <td>${ok(k.precinto)}</td><td>${ok(k.desf)}</td><td class="num">${N(k.venc)||'—'}</td>
-       <td><button class="btn dg sm" data-kx="${k.id}" data-kf="${k.fecha}">Borrar</button></td></tr>`).join('')}
+       <td><button class="btn gh sm" data-ke="${k.id}" data-kf="${k.fecha}">Editar</button>
+           <button class="btn dg sm" data-kx="${k.id}" data-kf2="${k.fecha}">×</button></td></tr>`).join('')}
      </tbody></table>`:'<p class="hint">Sin controles.</p>'}</div></div>
    <div class="card"><h2>Eventos</h2><div class="tblwrap">${V.length?`<table><thead><tr>
      <th>Fecha</th><th>Tipo</th><th>Grav.</th><th>Estado</th><th></th></tr></thead><tbody>
      ${V.map(v=>`<tr><td class="num">${esd(v.fecha)}</td><td>${esc((EVT.find(x=>x.k===v.tipo)||{}).n||v.tipo)}</td>
        <td><span class="chip ${N(v.grav)>=4?'bad':N(v.grav)>=3?'wa':''}">${v.grav}</span></td>
        <td><span class="chip ${v.est==='cerrado'?'ok':'wa'}">${v.est}</span></td>
-       <td><button class="btn gh sm" data-ve="${v.id}" data-vf="${v.fecha}">Editar</button></td></tr>`).join('')}
+       <td><button class="btn gh sm" data-ve="${v.id}" data-vf="${v.fecha}">Editar</button>
+           <button class="btn dg sm" data-vx="${v.id}" data-vf2="${v.fecha}">×</button></td></tr>`).join('')}
      </tbody></table>`:'<p class="hint">Sin eventos.</p>'}</div></div>`;
 }
 function bindHist(){
@@ -605,61 +612,118 @@ function bindHist(){
     editP=(B.partes[ym(b.dataset.pf)]||[]).find(x=>x.id===b.dataset.pe);sub='parte';vCargar()});
   document.querySelectorAll('[data-ve]').forEach(b=>b.onclick=()=>{
     editE=(B.eventos[ym(b.dataset.vf)]||[]).find(x=>x.id===b.dataset.ve);sub='evento';vCargar()});
+  document.querySelectorAll('[data-ke]').forEach(b=>b.onclick=()=>{
+    editK=(B.checks[ym(b.dataset.kf)]||[]).find(x=>x.id===b.dataset.ke);sub='carro';vCargar()});
+  document.querySelectorAll('[data-px]').forEach(b=>b.onclick=()=>{
+    if(!confirm('¿Borrar este parte?'))return;
+    borrarItem('partes',b.dataset.px,b.dataset.pf2);vCargar();vPanel();toast('Parte borrado')});
+  document.querySelectorAll('[data-vx]').forEach(b=>b.onclick=()=>{
+    if(!confirm('¿Borrar este evento?'))return;
+    borrarItem('eventos',b.dataset.vx,b.dataset.vf2);vCargar();vPanel();toast('Evento borrado')});
   document.querySelectorAll('[data-kx]').forEach(b=>b.onclick=()=>{
     if(!confirm('¿Borrar este control?'))return;
-    borrarItem('checks',b.dataset.kx,b.dataset.kf);vCargar();vPanel();toast('Control borrado')});
+    borrarItem('checks',b.dataset.kx,b.dataset.kf2);vCargar();vPanel();toast('Control borrado')});
 }
 
 /* =============================================================
    VISTA · EQUIPOS
    ============================================================= */
+let editEq=null, editSt=null;
 function vEquipos(){
   const E=aggEq();
+  // formulario de edición de un equipo
+  const formEq=editEq!==null?(()=>{const e=editEq.id?editEq:{tipo:EQTIPO[0],id2:'',ubic:'',est:'op',desde:iso(new Date()),pm:''};
+    return `<div class="card" style="border-color:var(--t4)"><h2>${editEq.id?'Editar equipo':'Nuevo equipo'}</h2>
+     <div class="grid g2">
+       <div class="field"><label>Tipo</label><select id="eq_tipo">${EQTIPO.map(t=>`<option ${e.tipo===t?'selected':''}>${t}</option>`).join('')}</select></div>
+       <div class="field"><label>Identificación (patrimonio o nombre)</label><input id="eq_id2" value="${esc(e.id2)}" style="font-family:var(--body)"></div>
+       <div class="field"><label>Ubicación (box, sector)</label><input id="eq_ubic" value="${esc(e.ubic)}" style="font-family:var(--body)"></div>
+       <div class="field"><label>Estado</label><select id="eq_est">${EQEST.map(s=>`<option value="${s.k}" ${e.est===s.k?'selected':''}>${s.n}</option>`).join('')}</select></div>
+       <div class="field"><label>Próximo mantenimiento</label><input type="date" id="eq_pm" value="${e.pm||''}"></div>
+     </div>
+     <div class="actions"><button class="btn sm" id="eqSave">Guardar</button>
+       <button class="btn gh sm" id="eqCancel">Cancelar</button></div></div>`})():'';
+  // formulario de edición de un ítem de stock
+  const formSt=editSt!==null?(()=>{const s=editSt.id?editSt:{n:'',cant:0,min:2};
+    return `<div class="card" style="border-color:var(--t4)"><h2>${editSt.id?'Editar ítem':'Nuevo ítem'}</h2>
+     <div class="grid g3">
+       <div class="field"><label>Ítem</label><input id="st_n" value="${esc(s.n)}" style="font-family:var(--body)"></div>
+       <div class="field"><label>Cantidad actual</label><input type="number" id="st_cant" value="${N(s.cant)}"></div>
+       <div class="field"><label>Cantidad mínima</label><input type="number" id="st_min" value="${N(s.min)}"></div>
+     </div>
+     <div class="actions"><button class="btn sm" id="stSave">Guardar</button>
+       <button class="btn gh sm" id="stCancel">Cancelar</button></div></div>`})():'';
+
   $('v-equipos').innerHTML=`<div class="grid g2" style="margin-top:12px">
     ${kpi('Operatividad',f1(E.pOper),'%',`${E.op} de ${E.tot}`,est(E.pOper,S.cfg.oper,true))}
     ${kpi('En reparación',E.rep||0,'','Esperando bioingeniería',(E.rep||0)?'warn':'hi')}
     ${kpi('Fuera de servicio',E.fs||0,'','Sin fecha de retorno',(E.fs||0)?'bad':'hi')}
     ${kpi('Mantenimiento vencido',E.pmVenc,'','Preventivo fuera de fecha',E.pmVenc?'warn':'hi')}</div>
+   ${formEq}
    <div class="card"><h2>Inventario</h2>
-    ${S.equipos.length?`<div class="tblwrap"><table><thead><tr><th>Tipo</th><th>Id.</th><th>Estado</th><th>Parado</th><th></th></tr></thead>
-     <tbody>${S.equipos.map(e=>`<tr><td>${esc(e.tipo)}</td><td>${esc(e.id2)||'—'}</td>
+    ${S.equipos.length?`<div class="tblwrap"><table><thead><tr><th>Tipo</th><th>Id.</th><th>Ubic.</th><th>Estado</th><th>Parado</th><th>Mant.</th><th></th></tr></thead>
+     <tbody>${S.equipos.map(e=>`<tr><td>${esc(e.tipo)}</td><td>${esc(e.id2)||'—'}</td><td>${esc(e.ubic)||'—'}</td>
       <td><select data-eq="${e.id}" style="padding:6px 7px;font-size:13px">${EQEST.map(s=>
         `<option value="${s.k}" ${e.est===s.k?'selected':''}>${s.n}</option>`).join('')}</select></td>
       <td class="num">${e.est!=='op'&&e.desde?Math.floor((new Date(iso(new Date()))-new Date(e.desde))/864e5)+' d':'—'}</td>
-      <td><button class="btn dg sm" data-eqx="${e.id}">×</button></td></tr>`).join('')}</tbody></table></div>`
+      <td class="num">${e.pm?`<span class="chip ${e.pm<iso(new Date())?'bad':'ok'}">${esd(e.pm)}</span>`:'—'}</td>
+      <td><button class="btn gh sm" data-eqe="${e.id}">Editar</button>
+          <button class="btn dg sm" data-eqx="${e.id}">×</button></td></tr>`).join('')}</tbody></table></div>`
      :'<p class="hint">Cargá las bombas, respiradores y monitores. Después solo vas a cambiar el estado.</p>'}
     <div class="actions"><button class="btn sm" id="eqAdd">Agregar equipo</button></div></div>
+   ${formSt}
    <div class="card"><h2>Circuitos y descartables</h2>
     ${S.stock.length?`<div class="tblwrap"><table><thead><tr><th>Ítem</th><th>Cant.</th><th>Mín.</th><th>Estado</th><th></th></tr></thead>
      <tbody>${S.stock.map(s=>`<tr><td>${esc(s.n)}</td>
       <td><input type="number" data-st="${s.id}" value="${N(s.cant)}" style="width:78px;padding:6px 7px;font-size:14px"></td>
       <td class="num">${N(s.min)}</td>
       <td>${N(s.cant)<N(s.min)?'<span class="chip bad">Bajo</span>':'<span class="chip ok">OK</span>'}</td>
-      <td><button class="btn dg sm" data-stx="${s.id}">×</button></td></tr>`).join('')}</tbody></table></div>`
+      <td><button class="btn gh sm" data-ste="${s.id}">Editar</button>
+          <button class="btn dg sm" data-stx="${s.id}">×</button></td></tr>`).join('')}</tbody></table></div>`
      :'<p class="hint">Circuitos de respirador, tubuladuras, sets de bomba. Definí un mínimo y el panel te avisa.</p>'}
     <div class="actions"><button class="btn sm" id="stAdd">Agregar ítem</button></div></div>`;
 
+  // cambiar estado rápido desde la tabla
   document.querySelectorAll('[data-eq]').forEach(s=>s.onchange=()=>{
     const e=S.equipos.find(x=>x.id===s.dataset.eq),hoy=iso(new Date());
     if(e.est!=='op'&&s.value==='op'&&e.desde){e.hist=e.hist||[];
       e.hist.push({d:Math.max(0,Math.round((new Date(hoy)-new Date(e.desde))/864e5))})}
     e.est=s.value;e.desde=hoy;guardarBase();vEquipos();vPanel();toast(EQEST.find(x=>x.k===s.value).n)});
+  // editar equipo (formulario completo)
+  document.querySelectorAll('[data-eqe]').forEach(b=>b.onclick=()=>{
+    editEq=S.equipos.find(x=>x.id===b.dataset.eqe);editSt=null;vEquipos();window.scrollTo({top:0,behavior:'smooth'})});
   document.querySelectorAll('[data-eqx]').forEach(b=>b.onclick=()=>{
     if(!confirm('¿Borrar el equipo?'))return;
     S.equipos=S.equipos.filter(x=>x.id!==b.dataset.eqx);guardarBase();vEquipos();vPanel()});
+  $('eqAdd').onclick=()=>{editEq={};editSt=null;vEquipos();window.scrollTo({top:0,behavior:'smooth'})};
+  if($('eqSave'))$('eqSave').onclick=()=>{
+    const e=editEq.id?editEq:{id:'e'+Date.now(),hist:[],desde:iso(new Date())};
+    e.tipo=$('eq_tipo').value;e.id2=$('eq_id2').value.trim();e.ubic=$('eq_ubic').value.trim();
+    // si cambió a operativo, cierro el período parado
+    if(e.est&&e.est!=='op'&&$('eq_est').value==='op'&&e.desde){e.hist=e.hist||[];
+      e.hist.push({d:Math.max(0,Math.round((new Date(iso(new Date()))-new Date(e.desde))/864e5))})}
+    if(e.est!==$('eq_est').value)e.desde=iso(new Date());
+    e.est=$('eq_est').value;e.pm=$('eq_pm').value;
+    if(!editEq.id)S.equipos.push(e);
+    editEq=null;guardarBase();vEquipos();vPanel();toast('Equipo guardado')};
+  if($('eqCancel'))$('eqCancel').onclick=()=>{editEq=null;vEquipos()};
+
+  // stock: editar cantidad rápido
   document.querySelectorAll('[data-st]').forEach(i=>i.onchange=()=>{
     S.stock.find(x=>x.id===i.dataset.st).cant=N(i.value);guardarBase();vEquipos();vPanel()});
+  document.querySelectorAll('[data-ste]').forEach(b=>b.onclick=()=>{
+    editSt=S.stock.find(x=>x.id===b.dataset.ste);editEq=null;vEquipos();window.scrollTo({top:0,behavior:'smooth'})});
   document.querySelectorAll('[data-stx]').forEach(b=>b.onclick=()=>{
+    if(!confirm('¿Borrar el ítem?'))return;
     S.stock=S.stock.filter(x=>x.id!==b.dataset.stx);guardarBase();vEquipos()});
-  $('eqAdd').onclick=()=>{
-    const t=prompt('Tipo:\n'+EQTIPO.map((x,i)=>(i+1)+'. '+x).join('\n'),'1');if(t===null)return;
-    const tipo=/^\d+$/.test(t)?EQTIPO[+t-1]:t;if(!tipo)return;
-    S.equipos.push({id:'e'+Date.now(),tipo,id2:prompt('Identificación (patrimonio o nombre)','')||'',
-      ubic:'',est:'op',desde:iso(new Date()),pm:prompt('Próximo mantenimiento (AAAA-MM-DD, opcional)','')||'',hist:[]});
-    guardarBase();vEquipos();vPanel()};
-  $('stAdd').onclick=()=>{const n=prompt('Ítem');if(!n)return;
-    S.stock.push({id:'s'+Date.now(),n,cant:N(prompt('Cantidad actual','0')),min:N(prompt('Mínimo','2'))});
-    guardarBase();vEquipos();vPanel()};
+  $('stAdd').onclick=()=>{editSt={};editEq=null;vEquipos();window.scrollTo({top:0,behavior:'smooth'})};
+  if($('stSave'))$('stSave').onclick=()=>{
+    const n=$('st_n').value.trim();if(!n){toast('Poné un nombre',1);return}
+    const s=editSt.id?editSt:{id:'s'+Date.now()};
+    s.n=n;s.cant=N($('st_cant').value);s.min=N($('st_min').value);
+    if(!editSt.id)S.stock.push(s);
+    editSt=null;guardarBase();vEquipos();vPanel();toast('Ítem guardado')};
+  if($('stCancel'))$('stCancel').onclick=()=>{editSt=null;vEquipos()};
 }
 
 /* =============================================================
