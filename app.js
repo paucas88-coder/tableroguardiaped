@@ -227,8 +227,11 @@ function resumir(rows){
   return Object.values(porDia).map(d=>{
     Object.keys(d.espT).forEach(k=>{const v=d.espT[k];
       d.espT[k]=Math.round(v.reduce((a,b)=>a+b,0)/v.length)});
-    d.dx=Object.entries(d.dx).sort((a,b)=>b[1]-a[1]).slice(0,15);
-    d.pr=Object.entries(d.pr).sort((a,b)=>b[1]-a[1]).slice(0,12);
+    // Firestore no admite arrays dentro de arrays. Guardo dx y pr como objeto {clave:cantidad}.
+    const top=(obj,n)=>{const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n);
+      return Object.fromEntries(e)};
+    d.dx=top(d.dx,15);
+    d.pr=top(d.pr,12);
     return d});
 }
 
@@ -252,8 +255,9 @@ function aggDias(d){
     z.espN+=d2.espN||0;z.espSum+=d2.espSum||0;
     (d2.espH||[]).forEach((v,i)=>z.espH[i]+=v);
     Object.entries(d2.espT||{}).forEach(([k,v])=>{z.espT[k]=(z.espT[k]||0)+v;espTn[k]=(espTn[k]||0)+1});
-    (d2.dx||[]).forEach(([k,v])=>z.dx[k]=(z.dx[k]||0)+v);
-    (d2.pr||[]).forEach(([k,v])=>z.pr[k]=(z.pr[k]||0)+v)});
+    const ent=x=>Array.isArray(x)?x:Object.entries(x||{});
+    ent(d2.dx).forEach(([k,v])=>z.dx[k]=(z.dx[k]||0)+v);
+    ent(d2.pr).forEach(([k,v])=>z.pr[k]=(z.pr[k]||0)+v)});
   Object.keys(z.espT).forEach(k=>z.espT[k]=Math.round(z.espT[k]/espTn[k]));
   const qb=p=>{if(!z.espN)return null;let acc=0,lim=z.espN*p;
     for(let i=0;i<z.espH.length;i++){acc+=z.espH[i];if(acc>=lim)return BINS[i]}return BINS[BINS.length-1]};
