@@ -38,7 +38,7 @@ const EVT=[{k:'paro',n:'Paro cardiorrespiratorio'},{k:'rcp',n:'RCP'},{k:'intub',
 const EQTIPO=['Bomba de infusión','Respirador','CPAP / alto flujo','Monitor multiparamétrico','Saturómetro',
  'Desfibrilador','Aspirador','Laringoscopio','Electrocardiógrafo','Otro'];
 const EQEST=[{k:'op',n:'Operativo'},{k:'rep',n:'En reparación'},{k:'fs',n:'Fuera de servicio'},{k:'pre',n:'Prestado'}];
-const TURNOS3=[{k:'M',n:'Mañana 07–14',ini:7,fin:14},{k:'T',n:'Tarde 14–21',ini:14,fin:21},{k:'N',n:'Noche 21–07',ini:21,fin:7}];
+const TURNOS3=[{k:'M',n:'Mañana 08–14',ini:8,fin:14},{k:'T',n:'Tarde 14–20',ini:14,fin:20},{k:'N',n:'Noche 20–08',ini:20,fin:8}];
 const TURNOS2=[{k:'D',n:'Día 07–19',ini:7,fin:19},{k:'N',n:'Noche 19–07',ini:19,fin:7}];
 const BINS=[0,5,10,15,20,30,45,60,90,120,180,240,999]; // minutos, para el histograma de espera
 const CFG_DEF={nombre:'Guardia Pediátrica',hosp:'',esquema:3,med:2,enf:3,camas:6,recon:4,lwbs:2,hm:80,
@@ -91,11 +91,14 @@ async function cargarTodo(){
     if(base.exists()){const d=base.data();
       S.cfg={...CFG_DEF,...(d.cfg||{})};S.equipos=d.equipos||[];S.stock=d.stock||[];
       S.carros=(d.carros&&d.carros.length)?d.carros:S.carros}
+    // Traigo los baldes a una copia aparte y solo reemplazo si la nube realmente respondió.
+    // Así, si la conexión falla a mitad de camino, no borro lo que ya tenía en pantalla.
+    const nuevo={dias:{},partes:{},checks:{},eventos:{}};
     for(const col of ['dias','partes','checks','eventos']){
-      B[col]={};
       const snap=await getDocs(collection(db,'u',UID,col));
-      snap.forEach(x=>B[col][x.id]=x.data().items||[]);
+      snap.forEach(x=>nuevo[col][x.id]=x.data().items||[]);
     }
+    B=nuevo;
     cacheGuardar();setSync('','sincronizado');
   }catch(e){console.error(e);setSync('err','sin conexión · datos locales')}
 }
