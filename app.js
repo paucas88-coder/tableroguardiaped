@@ -336,9 +336,8 @@ const kpi=(k,v,u,f,s)=>`<div class="kpi ${s||''}"><div class="k">${k}</div>
   <div class="v">${v}${u?`<small> ${u}</small>`:''}</div>${f?`<div class="f">${f}</div>`:''}</div>`;
 const bars=(it,tot,cf)=>it.map(x=>{const p=tot>0?x.v/tot*100:0;
   const tip=tot>0?`${esc(x.n)}: ${x.v} · ${f1(p)} %`:`${esc(x.n)}: ${x.v}`;
-  const etq=tot>0&&p>=8?`<em>${f1(p)} %</em>`:'';
   return `<div class="brow" title="${tip}"><span>${esc(x.n)}</span>
-  <span class="bar"><i style="width:${p.toFixed(1)}%;background:${cf(x)}"></i>${etq}</span>
+  <span class="bar"><i style="width:${p.toFixed(1)}%;background:${cf(x)}"></i></span>
   <span class="n">${x.v}</span></div>`}).join('');
 const est=(v,meta,mayor)=>(v==null||isNaN(v))?'':(mayor?(v>=meta?'hi':v>=meta*.9?'warn':'bad'):(v<=meta?'hi':v<=meta*1.25?'warn':'bad'));
 
@@ -390,7 +389,9 @@ function vPanel(){
       :kpi('Retiro sin atención',f1(A.pLwbs),'%',`Meta ${c.lwbs} %`,est(A.pLwbs,c.lwbs,false))}</div>`];
 
   if(A.n)h.push(`<div class="card"><h2>Cuándo llega la demanda</h2>
-    <div class="hourbars">${A.h.map((v,i)=>`<i class="${i===A.picoHora?'pk':''}" style="height:${(v/mx*100).toFixed(1)}%"></i>`).join('')}</div>
+    <div class="hourbars">${A.h.map((v,i)=>`<i class="${i===A.picoHora?'pk':''}" style="height:${(v/mx*100).toFixed(1)}%"
+      title="${String(i).padStart(2,'0')}:00 · ${v} ${v===1?'atención':'atenciones'}"
+      >${v>0?`<b>${v}</b>`:''}</i>`).join('')}</div>
     <div class="hourlbl"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
     <p class="hint">Pico a las ${String(A.picoHora).padStart(2,'0')}:00, turno ${turnoDe(A.picoHora)}.
     ${Object.entries(A.t).map(([k,v])=>`${k} ${v}`).join(' · ')}</p></div>`);
