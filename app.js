@@ -49,7 +49,7 @@ const CFG_DEF={nombre:'Guardia Pediátrica',hosp:'',esquema:3,med:2,enf:3,camas:
    ============================================================= */
 let S={cfg:{...CFG_DEF},equipos:[],stock:[],carros:[{id:'c1',n:'Carro de paro · Guardia'}]};
 let B={dias:{},partes:{},checks:{},eventos:{}};   // baldes por mes: {'2026-08':[...]}
-let range=7, vista='panel', sub=null, editP=null, editE=null, editK=null;
+let range=7, vista='panel', sub=null, editP=null, editE=null, editK=null, verAnalisis=false;
 
 const $=i=>document.getElementById(i);
 const N=v=>{const n=parseFloat(v);return isNaN(n)?0:n};
@@ -334,6 +334,57 @@ function aggEv(d,consultas){
    ============================================================= */
 const kpi=(k,v,u,f,s)=>`<div class="kpi ${s||''}"><div class="k">${k}</div>
   <div class="v">${v}${u?`<small> ${u}</small>`:''}</div>${f?`<div class="f">${f}</div>`:''}</div>`;
+/* Serie por día con todas las métricas de atención médica, para los gráficos de evolución. */
+function serieDiaria(d){
+  const L=dias(d).sort((a,b)=>a.f.localeCompare(b.f));
+  const porFecha={};L.forEach(x=>porFecha[x.f]=x);
+  const out=[],hoy=new Date();
+  for(let i=d-1;i>=0;i--){const x=new Date(hoy);x.setDate(x.getDate()-i);const k=iso(x);
+    const r=porFecha[k];
+    const dow=x.getDay();
+    if(!r){out.push({f:k,dow,n:0,esp:null,pEsp15:null,pIntern:null,pLwbs:null,vacio:true});continue}
+    const le=x2=>{let a=0;for(let j=0;j<BINS.length;j++){if(BINS[j]<=x2)a+=(r.espH||[])[j]||0}return a};
+    const espProm=r.espN?r.espSum/r.espN:null;
+    out.push({f:k,dow,n:r.n,esp:espProm,
+      pEsp15:r.espN?le(15)/r.espN*100:null,
+      pIntern:r.n?((r.de?.intern||0)+(r.de?.uti||0))/r.n*100:null,
+      pLwbs:r.n?(r.de?.retiro||0)/r.n*100:null,
+      espN:r.espN||0});
+  }
+  return out;
+}
+/* Gráfico de líneas SVG. series=[{vals:[...], color, name}]. */
+function lineChart(series, opts={}){
+  const W=320,H=110,padL=4,padR=6,padT=10,padB=4;
+  const all=series.flatMap(s=>s.vals.filter(v=>v!=null));
+  if(!all.length)return '<p class="hint">Sin datos en el período.</p>';
+  const max=opts.max!=null?opts.max:Math.max(...all,1);
+  const min=opts.min!=null?opts.min:0;
+  const rg=Math.max(1,max-min);
+  const n=series[0].vals.length;
+  const x=i=>padL+(i/(n-1||1))*(W-padL-padR);
+  const y=v=>padT+(1-(v-min)/rg)*(H-padT-padB);
+  let paths='';
+  series.forEach(s=>{
+    let dd='',pen=false;
+    s.vals.forEach((v,i)=>{if(v==null){pen=false;return}
+      dd+=(pen?' L':' M')+x(i).toFixed(1)+','+y(v).toFixed(1);pen=true});
+    paths+=`<path d="${dd}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    for(let i=s.vals.length-1;i>=0;i--){if(s.vals[i]!=null){
+      paths+=`<circle cx="${x(i).toFixed(1)}" cy="${y(s.vals[i]).toFixed(1)}" r="2.6" fill="${s.color}"/>`;break}}
+  });
+  let meta='';
+  if(opts.meta!=null){const ym2=y(opts.meta);
+    meta=`<line x1="${padL}" y1="${ym2.toFixed(1)}" x2="${W-padR}" y2="${ym2.toFixed(1)}"
+      stroke="var(--t3)" stroke-width="1" stroke-dasharray="4 3" opacity="0.7"/>`}
+  let prom='';
+  if(opts.prom){const pv=all.reduce((a,b)=>a+b,0)/all.length,yp=y(pv);
+    prom=`<line x1="${padL}" y1="${yp.toFixed(1)}" x2="${W-padR}" y2="${yp.toFixed(1)}"
+      stroke="var(--mut2)" stroke-width="1" stroke-dasharray="2 3" opacity="0.6"/>`}
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:118px;display:block">
+    ${meta}${prom}${paths}</svg>`;
+}
+
 const bars=(it,tot,cf)=>it.map(x=>{const p=tot>0?x.v/tot*100:0;
   const tip=tot>0?`${esc(x.n)}: ${x.v} · ${f1(p)} %`:`${esc(x.n)}: ${x.v}`;
   return `<div class="brow" title="${tip}"><span>${esc(x.n)}</span>
@@ -344,6 +395,80 @@ const est=(v,meta,mayor)=>(v==null||isNaN(v))?'':(mayor?(v>=meta?'hi':v>=meta*.9
 /* =============================================================
    VISTA · PANEL
    ============================================================= */
+/* Sección desplegable: análisis fino de atención médica sobre todo el período elegido. */
+function analisisHTML(A){
+  const c=S.cfg, SD=serieDiaria(range), conDatos=SD.filter(d=>!d.vacio);
+  if(!conDatos.length)return '<div class="card"><p class="hint">Importá al menos un día para ver la evolución.</p></div>';
+
+  const prom=A.n/Math.max(1,conDatos.length);
+  const picoDia=conDatos.reduce((a,b)=>b.n>a.n?b:a,conDatos[0]);
+  const finde=conDatos.filter(d=>d.dow===0||d.dow===6);
+  const semana=conDatos.filter(d=>d.dow>=1&&d.dow<=5);
+  const promFinde=finde.length?finde.reduce((a,b)=>a+b.n,0)/finde.length:null;
+  const promSem=semana.length?semana.reduce((a,b)=>a+b.n,0)/semana.length:null;
+
+  const P=aggPartes(range);
+  const medProm=P.n?P.medP/P.n:null;
+  const cargaMedDia=medProm?prom/medProm:null;
+
+  const H=[];
+  H.push(`<div class="card" id="anaTop" style="border-color:var(--t4)">
+    <h2>Titular del período · ${conDatos.length} días con datos</h2>
+    <div class="notice" style="border-left-color:var(--t4)">
+      En <b>${conDatos.length} días</b> hubo <b>${A.n} atenciones</b>, un promedio de <b>${f1(prom)} por día</b>.
+      El día más cargado fue el <b>${esd(picoDia.f)}</b> con <b>${picoDia.n}</b>.
+      ${A.espN?`La espera mediana fue de <b>${A.espMed} min</b> y <b>${f1(A.pEsp15)} %</b> se atendió dentro de los 15 minutos.`:''}
+      ${cargaMedDia!=null?` Con la dotación cargada, cada médico atendió cerca de <b>${f1(cargaMedDia)}</b> pacientes por turno.`:''}
+    </div></div>`);
+
+  H.push(`<div class="card"><h2>Atenciones por día <span style="color:var(--mut2);font-weight:400">— gris: promedio</span></h2>
+    ${lineChart([{vals:SD.map(d=>d.vacio?null:d.n),color:'var(--t4)'}],{prom:true,min:0})}
+    <div class="hourlbl"><span>${esd(SD[0].f)}</span><span>${esd(SD[SD.length-1].f)}</span></div>
+    <p class="hint">Promedio ${f1(prom)}/día. Pico ${picoDia.n} el ${esd(picoDia.f)}.
+    ${SD.filter(d=>d.vacio).length?`Faltan importar ${SD.filter(d=>d.vacio).length} días.`:''}</p></div>`);
+
+  if(A.espN)H.push(`<div class="card"><h2>Espera media por día <span style="color:var(--mut2);font-weight:400">— amarillo: meta 15 min</span></h2>
+    ${lineChart([{vals:SD.map(d=>d.vacio?null:d.esp),color:'var(--t2)'}],{meta:15,min:0})}
+    <div class="hourlbl"><span>${esd(SD[0].f)}</span><span>${esd(SD[SD.length-1].f)}</span></div>
+    <p class="hint">Los días por encima de la línea amarilla superaron la meta de espera.</p></div>`);
+
+  if(A.espN)H.push(`<div class="card"><h2>% atendidos en 15 min, por día <span style="color:var(--mut2);font-weight:400">— meta 80 %</span></h2>
+    ${lineChart([{vals:SD.map(d=>d.vacio?null:d.pEsp15),color:'var(--t4)'}],{meta:80,min:0,max:100})}
+    <div class="hourlbl"><span>${esd(SD[0].f)}</span><span>${esd(SD[SD.length-1].f)}</span></div>
+    <p class="hint">Cuando la curva cae bajo la línea, ese día la guardia no dio abasto para atender a tiempo.</p></div>`);
+
+  const promHora=A.h.map(v=>conDatos.length?v/conDatos.length:0);
+  const mxph=Math.max(1,...promHora);
+  H.push(`<div class="card"><h2>Demanda por hora, promedio del período</h2>
+    <div class="hourbars">${promHora.map((v,i)=>`<i class="${i===A.picoHora?'pk':''}" style="height:${(v/mxph*100).toFixed(1)}%"
+      title="${String(i).padStart(2,'0')}:00 · ${f1(v)}/día">${v>=mxph*0.25?`<b>${f1(v)}</b>`:''}</i>`).join('')}</div>
+    <div class="hourlbl"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
+    <p class="hint">Atenciones por hora en un día típico. El pico sostenido es donde conviene reforzar la guardia.</p></div>`);
+
+  const turnoProm=turnos().map(t=>({n:t.n,v:conDatos.length?(A.t[t.k]||0)/conDatos.length:0}));
+  const promTurnos=turnoProm.reduce((a,b)=>a+b.v,0)/turnoProm.length;
+  H.push(`<div class="card"><h2>Carga promedio por turno</h2>
+    ${bars(turnoProm.map(t=>({n:t.n,v:Math.round(t.v*10)/10})),Math.max(...turnoProm.map(t=>t.v),1),
+      x=>x.v>=promTurnos?'var(--t2)':'var(--t5)')}
+    <p class="hint">Atenciones por día en cada turno. El más cargado es el candidato natural a reforzar dotación.</p></div>`);
+
+  if(promFinde!=null&&promSem!=null)H.push(`<div class="card"><h2>Semana vs fin de semana</h2>
+    <div class="grid g2">
+      ${kpi('Lunes a viernes',f1(promSem),'/día',`${semana.length} días`,'')}
+      ${kpi('Sábado y domingo',f1(promFinde),'/día',`${finde.length} días`,promFinde>promSem?'warn':'')}</div>
+    <p class="hint">${promFinde>promSem?`El fin de semana llega ${f1((promFinde/promSem-1)*100)} % más de demanda.`
+      :`La semana concentra la mayor demanda.`}</p></div>`);
+
+  if(cargaMedDia!=null)H.push(`<div class="card"><h2>Carga por médico</h2>
+    <div class="grid g2">
+      ${kpi('Médicos presentes',f1(medProm),'','Promedio por turno','')}
+      ${kpi('Pacientes por médico',f1(cargaMedDia),'','Por turno',cargaMedDia>15?'bad':cargaMedDia>10?'warn':'hi')}</div>
+    <p class="hint">Atenciones divididas por los médicos que cargaste en los partes.
+    Es el número que sostiene un pedido de más dotación: cuántos pacientes ve cada médico.</p></div>`);
+
+  return H.join('');
+}
+
 function vPanel(){
   const A=aggDias(range),P=aggPartes(range),E=aggEq(),C=aggCarro(range),V=aggEv(range,A.n),c=S.cfg;
   const box=$('v-panel');
@@ -388,6 +513,11 @@ function vPanel(){
     ${A.espN?kpi('Atendidos ≤15 min',f1(A.pEsp15),'%',`${f1(A.pEsp30)} % dentro de 30`,est(A.pEsp15,80,true))
       :kpi('Retiro sin atención',f1(A.pLwbs),'%',`Meta ${c.lwbs} %`,est(A.pLwbs,c.lwbs,false))}</div>`];
 
+  // botón que despliega el análisis detallado de atención médica
+  if(A.n)h.push(`<button class="btn ${verAnalisis?'gh':''} wide sm" id="toggleAnalisis" style="margin-bottom:11px">
+    ${verAnalisis?'▲ Ocultar análisis de atención médica':'▼ Ver análisis de atención médica'}</button>`);
+  if(A.n&&verAnalisis)h.push(analisisHTML(A));
+
   if(A.n)h.push(`<div class="card"><h2>Cuándo llega la demanda</h2>
     <div class="hourbars">${A.h.map((v,i)=>`<i class="${i===A.picoHora?'pk':''}" style="height:${(v/mx*100).toFixed(1)}%"
       title="${String(i).padStart(2,'0')}:00 · ${v} ${v===1?'atención':'atenciones'}"
@@ -431,6 +561,8 @@ function vPanel(){
 
   box.innerHTML=h.join('');
   box.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{range=+b.dataset.r;vPanel()});
+  if($('toggleAnalisis'))$('toggleAnalisis').onclick=()=>{verAnalisis=!verAnalisis;vPanel();
+    if(verAnalisis)setTimeout(()=>{const el=$('anaTop');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})},50)};
 }
 
 /* =============================================================
