@@ -1,6 +1,6 @@
 /* Cachea la app para que abra sin conexión.
    Subí la versión cada vez que cambies algo: fuerza la actualización en el celular. */
-const V = 'guardia-v1';
+const V = 'guardia-v2';
 const SHELL = ['./', './index.html', './app.js', './firebase-config.js', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
